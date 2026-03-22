@@ -39,21 +39,23 @@ XR Instance (WebService "my-api"):
 
 A Composition's `spec.compositeTypeRef` is how Crossplane matches the Composition to an XRD. Crossplane reads the XR's `apiVersion` and `kind`, finds the Composition that declares a matching `compositeTypeRef`, and runs its pipeline.
 
-You can have multiple Compositions for the same XRD — selected by `compositionRef` or `compositionSelector` on the XR:
+You can have multiple Compositions for the same XRD — selected by `spec.crossplane.compositionRef` or `spec.crossplane.compositionSelector` on the XR:
 
 ```yaml
 # XR chooses a specific Composition by name
 spec:
-  compositionRef:
-    name: webservice-go-composition
+  crossplane:
+    compositionRef:
+      name: webservice-go-composition
 ```
 
 ```yaml
 # XR selects a Composition by label (useful for channel-based rollout)
 spec:
-  compositionSelector:
-    matchLabels:
-      channel: stable
+  crossplane:
+    compositionSelector:
+      matchLabels:
+        channel: stable
 ```
 
 ---

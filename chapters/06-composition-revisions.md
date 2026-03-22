@@ -39,7 +39,7 @@ CompositionRevisions are **read-only**. You never edit them. You edit the Compos
 
 ## XR Composition Update Policy
 
-Each XR controls how it handles new revisions via `spec.compositionUpdatePolicy`:
+Each XR controls how it handles new revisions via `spec.crossplane.compositionUpdatePolicy`:
 
 | Value | Behavior |
 |-------|---------|
@@ -55,9 +55,10 @@ metadata:
   name: my-stable-api
   namespace: default
 spec:
-  compositionUpdatePolicy: Manual          # Pin to current revision
-  compositionRevisionRef:
-    name: webservice-composition-abc12     # The specific revision name
+  crossplane:
+    compositionUpdatePolicy: Manual          # Pin to current revision
+    compositionRevisionRef:
+      name: webservice-composition-abc12     # The specific revision name
   image: nginx:alpine
   replicas: 2
 ```
@@ -68,13 +69,14 @@ Setting `Manual` without specifying `compositionRevisionRef` means the XR pins t
 
 ## Selecting a Composition by Labels
 
-Instead of naming a Composition directly with `compositionRef`, XRs can select one dynamically using labels:
+Instead of naming a Composition directly with `spec.crossplane.compositionRef`, XRs can select one dynamically using labels:
 
 ```yaml
 spec:
-  compositionSelector:
-    matchLabels:
-      channel: stable        # Only use Compositions labelled channel=stable
+  crossplane:
+    compositionSelector:
+      matchLabels:
+        channel: stable        # Only use Compositions labelled channel=stable
 ```
 
 You then label your Compositions:
@@ -86,7 +88,7 @@ metadata:
     channel: stable
 ```
 
-This pattern lets you run `channel: stable` and `channel: canary` Compositions side by side and migrate XRs by changing the label selector rather than the `compositionRef` name.
+This pattern lets you run `channel: stable` and `channel: canary` Compositions side by side and migrate XRs by changing the label selector rather than the `spec.crossplane.compositionRef` name.
 
 ---
 
@@ -102,17 +104,25 @@ If Chapter 03 and 04 resources are gone:
 
 ```bash
 kubectl apply -f practice/ch03/webservice-xrd.yaml
-kubectl apply -f practice/ch04/function-pat.yaml
+kubectl apply -f practice/ch04/function-go-templating.yaml
 kubectl get xrds --watch
 # Wait for ESTABLISHED=True, then Ctrl+C
 kubectl get functions.pkg.crossplane.io --watch
 # Wait for HEALTHY=True, then Ctrl+C
 ```
 
-Apply the Chapter 04 composition (this becomes Revision 1):
+This chapter relies on `webservice-composition` starting at **Revision 1**. If you've worked through earlier chapters, previous applies will have already incremented the revision counter. Delete the Composition (and its revisions) first so you get a clean slate:
 
 ```bash
-kubectl apply -f practice/ch04/webservice-composition.yaml
+kubectl delete composition webservice-composition --ignore-not-found
+kubectl delete composition webservice-advanced-composition --ignore-not-found
+```
+
+This chapter edits the Composition to create a second revision. Copy it into `practice/ch06/` first so the ch04 file stays untouched:
+
+```bash
+cp practice/ch04/webservice-composition.yaml practice/ch06/webservice-composition.yaml
+kubectl apply -f practice/ch06/webservice-composition.yaml
 ```
 
 ### Step 2: Inspect the First Revision
@@ -124,8 +134,8 @@ kubectl get compositionrevisions
 Expected output:
 
 ```
-NAME                                REVISION   XR-KIND      READY   AGE
-webservice-composition-<hash>       1          WebService   True    10s
+NAME                                REVISION   XR-KIND      XR-APIVERSION                    AGE
+webservice-composition-<hash>       1          WebService   platform.example.io/v1alpha1     10s
 ```
 
 Get the full details:
@@ -135,8 +145,7 @@ kubectl describe compositionrevision -l crossplane.io/composition-name=webservic
 ```
 
 Look for:
-- `Revision: 1`
-- `Current: true` — this is the revision currently in use
+- `Revision: 1` in the Spec section
 
 ### Step 3: Create a WebService with Manual Update Policy
 
@@ -149,7 +158,8 @@ metadata:
   name: pinned-svc
   namespace: default
 spec:
-  compositionUpdatePolicy: Manual
+  crossplane:
+    compositionUpdatePolicy: Manual
   image: nginx:alpine
   replicas: 1
   port: 80
@@ -165,7 +175,7 @@ kubectl apply -f practice/ch06/pinned-webservice.yaml
 Check what revision it was pinned to automatically:
 
 ```bash
-kubectl get webservice pinned-svc -n default -o jsonpath='{.spec.compositionRevisionRef.name}'
+kubectl get webservice pinned-svc -n default -o jsonpath='{.spec.crossplane.compositionRevisionRef.name}'
 ```
 
 Crossplane fills in the `compositionRevisionRef` with the current latest revision at the time the XR was first reconciled. Because the policy is `Manual`, it will now stay on that revision even when you publish a new one.
@@ -181,7 +191,8 @@ metadata:
   name: auto-svc
   namespace: default
 spec:
-  compositionUpdatePolicy: Automatic
+  crossplane:
+    compositionUpdatePolicy: Automatic
   image: nginx:alpine
   replicas: 1
   port: 80
@@ -196,24 +207,24 @@ kubectl apply -f practice/ch06/auto-webservice.yaml
 
 ### Step 5: Update the Composition — Create Revision 2
 
-Make a small change to `practice/ch04/webservice-composition.yaml`. Find the ConfigMap resource base section and add a label:
+Edit `practice/ch06/webservice-composition.yaml` (the copy you made in Step 1 — not the ch04 original). Find the Deployment's `metadata.labels` block and add a label:
 
 ```yaml
-      # ─── ConfigMap ─────────────────────────────────────────────────────────
-      - name: config
-        base:
-          apiVersion: v1
-          kind: ConfigMap
           metadata:
+            name: {{ $name }}
+            namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: deployment
             labels:
+              app: {{ $name }}
+              environment: {{ $spec.environment | default "production" }}
               revision: "2"           # ← add this line
-          data: {}
 ```
 
 Apply the updated Composition:
 
 ```bash
-kubectl apply -f practice/ch04/webservice-composition.yaml
+kubectl apply -f practice/ch06/webservice-composition.yaml
 ```
 
 ### Step 6: Inspect the Two Revisions
@@ -225,38 +236,39 @@ kubectl get compositionrevisions --sort-by=.spec.revision
 Expected:
 
 ```
-NAME                                REVISION   XR-KIND      READY   AGE
-webservice-composition-<hash1>      1          WebService   True    5m
-webservice-composition-<hash2>      2          WebService   True    10s
+NAME                                REVISION   XR-KIND      XR-APIVERSION                    AGE
+webservice-composition-<hash1>      1          WebService   platform.example.io/v1alpha1     5m
+webservice-composition-<hash2>      2          WebService   platform.example.io/v1alpha1     10s
 ```
 
-Revision 2 is now `Current: true`.
+Revision 2 is the latest — new XRs with `Automatic` policy will use it.
 
 ### Step 7: Verify the Manual XR Did NOT Update
 
 ```bash
-kubectl get webservice pinned-svc -n default -o jsonpath='{.spec.compositionRevisionRef.name}'
-# Should still point to revision 1 hash
+kubectl get webservice pinned-svc -n default -o jsonpath='{.spec.crossplane.compositionRevisionRef.name}'
+# Should still point to the older revision hash
 ```
 
-Check the ConfigMap resource created from `pinned-svc` — it should NOT have the `revision: "2"` label:
+Check the Deployment created from `pinned-svc` — it should NOT have the `revision: "2"` label:
 
 ```bash
-kubectl get configmap -n default -l app=pinned-svc -o yaml | grep -A 5 "labels:"
+kubectl get deployment pinned-svc -n default -o jsonpath='{.metadata.labels}'
+# Should not contain revision:2
 ```
 
 ### Step 8: Verify the Automatic XR DID Update
 
 ```bash
-kubectl get webservice auto-svc -n default -o jsonpath='{.spec.compositionRevisionRef.name}'
-# Should point to revision 2 hash
+kubectl get webservice auto-svc -n default -o jsonpath='{.spec.crossplane.compositionRevisionRef.name}'
+# Should point to the latest revision hash
 ```
 
-Check its ConfigMap for the new label:
+Check its Deployment for the new label:
 
 ```bash
-kubectl get configmap -n default -l app=auto-svc -o yaml | grep -A 5 "labels:"
-# Should show "revision: 2"
+kubectl get deployment auto-svc -n default -o jsonpath='{.metadata.labels}'
+# Should contain revision:2
 ```
 
 ### Step 9: Manually Migrate the Pinned XR to Revision 2
@@ -275,7 +287,7 @@ Patch the pinned XR to use revision 2:
 ```bash
 kubectl patch webservice pinned-svc -n default \
   --type merge \
-  -p "{\"spec\":{\"compositionRevisionRef\":{\"name\":\"$REV2\"}}}"
+  -p "{\"spec\":{\"crossplane\":{\"compositionRevisionRef\":{\"name\":\"$REV2\"}}}}"
 ```
 
 Watch it reconcile:
@@ -284,11 +296,11 @@ Watch it reconcile:
 kubectl get events -n default --sort-by=.metadata.creationTimestamp | tail -10
 ```
 
-Verify the ConfigMap now has the revision 2 label:
+Verify the Deployment now has the revision 2 label:
 
 ```bash
-kubectl get configmap -n default -l app=pinned-svc -o yaml | grep "revision:"
-# Should now show revision: "2"
+kubectl get deployment pinned-svc -n default -o jsonpath='{.metadata.labels}'
+# Should now contain revision:2
 ```
 
 ### Step 10: Clean Up
