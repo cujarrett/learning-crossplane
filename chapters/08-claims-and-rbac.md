@@ -228,8 +228,6 @@ metadata:
   name: alpha-frontend
   namespace: team-alpha
 spec:
-  compositionRef:
-    name: webservice-go-composition
   image: nginx:alpine
   replicas: 1
   port: 80
@@ -263,8 +261,6 @@ metadata:
   name: beta-api
   namespace: team-beta
 spec:
-  compositionRef:
-    name: webservice-go-composition
   image: nginx:alpine
   replicas: 2
   port: 8080

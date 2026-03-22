@@ -115,13 +115,11 @@ pipeline:
 
 ## Patch & Transform — Read It Once
 
-Your team uses Go templating. But you will encounter `function-patch-and-transform` in existing Compositions, community examples, and Crossplane docs — so it is worth being able to read it.
+Platform teams often use Go templating. But you will encounter more basic `function-patch-and-transform` in existing Compositions, community examples, and Crossplane docs — so it is worth being able to read it.
 
 **The concept:** Instead of a template, you write a list of `base` resource skeletons with `patches` that copy fields from the XR onto each resource.
 
 ```yaml
-# Annotated read-through — you do NOT need to write this style at work.
-
 pipeline:
 - step: create-resources
   functionRef:
@@ -159,7 +157,7 @@ pipeline:
           status: "True"
 ```
 
-**Why Go templates are better for your work:**
+**Patch & Transform vs. Go templates:**
 
 | Need | Patch & Transform | Go Template |
 |------|-------------------|-------------|
@@ -178,11 +176,11 @@ You now know enough to read any Patch & Transform Composition you encounter. The
 
 | Variable | What it contains |
 |----------|----------------|
-| `.oxr` | The observed XR wrapper |
-| `.oxr.resource` | The XR object — `metadata`, `spec`, `status` |
-| `.oxr.resource.metadata.name` | The XR's name |
-| `.oxr.resource.spec.<field>` | Any field from the XR spec |
-| `.ocds` | Observed composed resources (current cluster state of all child resources) |
+| `.observed` | A Go struct (fixed fields defined by the function library) — top-level entry point |
+| `.observed.composite.resource` | A map (`map[string]interface{}`) — the XR deserialized from YAML, with keys `metadata`, `spec`, `status` |
+| `.observed.composite.resource.metadata.name` | The XR's name |
+| `.observed.composite.resource.spec.<field>` | Any field from the XR spec |
+| `.observed.resources` | Observed composed resources (current cluster state of all child resources) |
 
 The template is embedded in the Composition under `input.inline.template` using a YAML block scalar (`|`). Each `---` separator in the rendered output produces a separate Kubernetes resource:
 
@@ -197,9 +195,9 @@ pipeline:
     source: Inline
     inline:
       template: |
-        {{- $name := .oxr.resource.metadata.name }}
-        {{- $ns   := .oxr.resource.metadata.namespace }}
-        {{- $spec := .oxr.resource.spec }}
+        {{- $name := .observed.composite.resource.metadata.name }}
+        {{- $ns   := .observed.composite.resource.metadata.namespace }}
+        {{- $spec := .observed.composite.resource.spec }}
         ---
         apiVersion: apps/v1
         kind: Deployment
@@ -215,7 +213,7 @@ pipeline:
         ...
 ```
 
-The `{{- $name := ... }}` variable assignments at the top avoid repeating `.oxr.resource.metadata.name` throughout the template.
+The `{{- $name := ... }}` variable assignments at the top avoid repeating `.observed.composite.resource.metadata.name` throughout the template.
 
 ---
 
@@ -247,7 +245,7 @@ kind: Function
 metadata:
   name: function-go-templating
 spec:
-  package: xpkg.crossplane.io/crossplane-contrib/function-go-templating:v0.7.0
+  package: xpkg.crossplane.io/crossplane-contrib/function-go-templating:v0.12.0
 ```
 
 Apply and wait for healthy:
@@ -268,79 +266,85 @@ kind: Composition
 metadata:
   name: webservice-composition
   labels:
-    channel: stable
+    channel: stable                           # Used by compositionSelector on the XR to pick this Composition
 spec:
   compositeTypeRef:
-    apiVersion: platform.example.io/v1alpha1
-    kind: WebService
-  mode: Pipeline
+    apiVersion: platform.example.io/v1alpha1  # Must match the XRD's group/version
+    kind: WebService                          # Must match the XRD's names.kind — this is how Crossplane links them
+  mode: Pipeline                              # Run a sequence of Function steps
   pipeline:
-  - step: render-webservice
+  - step: render-webservice                   # Arbitrary name — shows up in events/logs
     functionRef:
-      name: function-go-templating
+      name: function-go-templating            # Must match the metadata.name of the installed Function object
     input:
       apiVersion: gotemplating.fn.crossplane.io/v1beta1
       kind: GoTemplate
-      source: Inline
+      source: Inline                          # Template is embedded here (alternative: ConfigMap)
       inline:
         template: |
-          {{- $name := .oxr.resource.metadata.name }}
-          {{- $ns   := .oxr.resource.metadata.namespace }}
-          {{- $spec := .oxr.resource.spec }}
-          ---
+          {{- $name := .observed.composite.resource.metadata.name }}       # Alias the XR name — avoids repeating the long path
+          {{- $ns   := .observed.composite.resource.metadata.namespace }}  # Alias the XR namespace
+          {{- $spec := .observed.composite.resource.spec }}                # Alias the XR spec map — all developer inputs live here
+          ---                                               # "---" separator tells the function this is a new resource
           apiVersion: apps/v1
           kind: Deployment
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: deployment  # Required by function-go-templating v0.8+
             labels:
               app: {{ $name }}
-              environment: {{ $spec.environment | default "production" }}
+              environment: {{ $spec.environment | default "production" }}  # | default — safe fallback if field omitted
           spec:
             replicas: {{ $spec.replicas | default 1 }}
             selector:
               matchLabels:
-                app: {{ $name }}
+                app: {{ $name }}              # Selector must match the pod template labels below
             template:
               metadata:
                 labels:
-                  app: {{ $name }}
+                  app: {{ $name }}            # These labels are what the Service selector targets
                   environment: {{ $spec.environment | default "production" }}
               spec:
                 containers:
                 - name: app
-                  image: {{ $spec.image }}
+                  image: {{ $spec.image }}    # Required field — no default, XRD schema enforces it
                   ports:
                   - containerPort: {{ $spec.port | default 80 }}
-          ---
+          ---                                 # Second resource starts here
           apiVersion: v1
           kind: Service
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: service  # Required by function-go-templating v0.8+
             labels:
               app: {{ $name }}
           spec:
             selector:
-              app: {{ $name }}
+              app: {{ $name }}                # Routes traffic to pods with label app={{ $name }}
             ports:
-            - port: 8080
-              targetPort: {{ $spec.port | default 80 }}
+            - port: 8080                      # Port the Service listens on inside the cluster
+              targetPort: {{ $spec.port | default 80 }}  # Port on the pod to forward to
               protocol: TCP
-          {{- if $spec.config }}
+          {{- if $spec.config }}              # Only render the ConfigMap if spec.config was provided
           ---
           apiVersion: v1
           kind: ConfigMap
           metadata:
             name: {{ $name }}-config
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: configmap  # Required by function-go-templating v0.8+
             labels:
               app: {{ $name }}
           data:
-          {{- range $key, $val := $spec.config }}
-            {{ $key }}: {{ $val | quote }}
+          {{- range $key, $val := $spec.config }}   # Iterate over the free-form map[string]string
+            {{ $key }}: {{ $val | quote }}           # | quote wraps the value in quotes — safe for strings with spaces
           {{- end }}
-          {{- end }}
+          {{- end }}                          # End of the if block — no ConfigMap rendered if config was absent
 ```
 
 Apply it:
@@ -360,8 +364,6 @@ metadata:
   name: my-webservice
   namespace: default
 spec:
-  compositionRef:
-    name: webservice-composition
   image: nginx:alpine
   replicas: 2
   port: 80
@@ -375,8 +377,10 @@ Apply and watch resources appear:
 
 ```bash
 kubectl apply -f practice/ch04/my-webservice.yaml
-kubectl get deployments,services,configmaps --watch
-# Deployment/2 READY, Service, and ConfigMap should appear. Ctrl+C.
+kubectl get deployments --watch
+# Wait for 2/2 READY, then Ctrl+C
+kubectl get deployments,services,configmaps
+# All three should now be present
 ```
 
 ### Step 5: Verify the Template Rendered Correctly
@@ -407,8 +411,6 @@ metadata:
   name: bare-webservice
   namespace: default
 spec:
-  compositionRef:
-    name: webservice-composition
   image: nginx:alpine
   replicas: 1
   port: 80
@@ -425,8 +427,10 @@ kubectl get deployments,services,configmaps
 
 ```bash
 kubectl delete webservice my-webservice -n default
-kubectl get deployments,services,configmaps --watch
-# All three resources disappear. Ctrl+C.
+kubectl get deployments --watch
+# Watch the Deployment disappear, then Ctrl+C
+kubectl get deployments,services,configmaps
+# All three should be gone
 
 kubectl delete webservice bare-webservice -n default
 ```

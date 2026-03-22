@@ -42,10 +42,10 @@ And the environment drives replica defaults:
 ### Pattern 1: Environment-Driven Defaults with a Variable
 
 ```go
-{{- $replicas := .oxr.resource.spec.replicas | default 2 }}
-{{- if eq .oxr.resource.spec.environment "production" }}
+{{- $replicas := .observed.composite.resource.spec.replicas | default 2 }}
+{{- if eq .observed.composite.resource.spec.environment "production" }}
   {{- $replicas = 3 }}
-{{- else if eq .oxr.resource.spec.environment "development" }}
+{{- else if eq .observed.composite.resource.spec.environment "development" }}
   {{- $replicas = 1 }}
 {{- end }}
 ```
@@ -55,7 +55,7 @@ Note: `$replicas = 3` (no `:=`) because the variable was already declared. This 
 ### Pattern 2: Conditional Resource Block
 
 ```go
-{{- if .oxr.resource.spec.autoscaling.enabled }}
+{{- if .observed.composite.resource.spec.autoscaling.enabled }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -70,25 +70,25 @@ The `---` document separator is inside the `if` block — the entire YAML docume
 When autoscaling is enabled, do NOT set a static `replicas` on the Deployment — the HPA manages that value. Setting `replicas` would fight with the HPA:
 
 ```go
-{{- if not .oxr.resource.spec.autoscaling.enabled }}
+{{- if not .observed.composite.resource.spec.autoscaling.enabled }}
   replicas: {{ $replicas }}
 {{- end }}
 ```
 
 ### Pattern 4: Nested Object Nil-Safety
 
-When accessing a nested field like `.oxr.resource.spec.autoscaling.minReplicas`, if `autoscaling` itself is nil (not provided), the template will panic.
+When accessing a nested field like `.observed.composite.resource.spec.autoscaling.minReplicas`, if `autoscaling` itself is nil (not provided), the template will panic.
 
 Use `hasKey` from Sprig to guard it:
 
 ```go
-{{- if and (hasKey .oxr.resource.spec "autoscaling") .oxr.resource.spec.autoscaling.enabled }}
+{{- if and (hasKey .observed.composite.resource.spec "autoscaling") .observed.composite.resource.spec.autoscaling.enabled }}
 ```
 
 Or use a safe accessor helper by assigning the nested object to a variable first:
 
 ```go
-{{- $as := .oxr.resource.spec.autoscaling | default dict }}
+{{- $as := .observed.composite.resource.spec.autoscaling | default dict }}
 {{- $asEnabled := $as.enabled | default false }}
 ```
 
@@ -100,11 +100,11 @@ Or use a safe accessor helper by assigning the nested object to a variable first
 
 ```go
 ---
-apiVersion: {{ .oxr.resource.apiVersion }}
-kind: {{ .oxr.resource.kind }}
+apiVersion: {{ .observed.composite.resource.apiVersion }}
+kind: {{ .observed.composite.resource.kind }}
 metadata:
-  name: {{ .oxr.resource.metadata.name }}
-  namespace: {{ .oxr.resource.metadata.namespace }}
+  name: {{ .observed.composite.resource.metadata.name }}
+  namespace: {{ .observed.composite.resource.metadata.namespace }}
 status:
   ready: true
   message: "Rendered by go-templating"
@@ -236,9 +236,9 @@ spec:
       source: Inline
       inline:
         template: |
-          {{- $name := .oxr.resource.metadata.name }}
-          {{- $ns   := .oxr.resource.metadata.namespace }}
-          {{- $spec := .oxr.resource.spec }}
+          {{- $name := .observed.composite.resource.metadata.name }}
+          {{- $ns   := .observed.composite.resource.metadata.namespace }}
+          {{- $spec := .observed.composite.resource.spec }}
 
           {{- /* ── Autoscaling config with safe nil defaults ── */}}
           {{- $as         := $spec.autoscaling | default dict }}
@@ -378,8 +378,6 @@ metadata:
   name: payments-service
   namespace: team-alpha
 spec:
-  compositionRef:
-    name: microservice-composition
   image: nginx:alpine
   environment: development
   port: 8080
@@ -423,8 +421,6 @@ metadata:
   name: orders-service
   namespace: team-alpha
 spec:
-  compositionRef:
-    name: microservice-composition
   image: nginx:alpine
   environment: production
   port: 8080

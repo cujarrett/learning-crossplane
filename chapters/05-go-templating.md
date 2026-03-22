@@ -65,7 +65,7 @@ Equivalent to `fmt.Sprintf` in Go.
 ### `has` — Check if a Value is in a List
 
 ```
-{{- if has "production" (list "production" "staging") }}
+{{- if has $spec.environment (list "production" "staging") }}
   # only render in production or staging
 {{- end }}
 ```
@@ -143,17 +143,17 @@ The special resource name `composite` in the desired composed resources targets 
 
 ```yaml
 template: |
-  {{- $name := .oxr.resource.metadata.name }}
-  {{- $ns   := .oxr.resource.metadata.namespace }}
-  {{- $spec := .oxr.resource.spec }}
+  {{- $name := .observed.composite.resource.metadata.name }}
+  {{- $ns   := .observed.composite.resource.metadata.namespace }}
+  {{- $spec := .observed.composite.resource.spec }}
   ---
   apiVersion: apps/v1
   kind: Deployment
   ...
   ---
   # Write status back to the XR. The name "composite" is special.
-  apiVersion: {{ .oxr.resource.apiVersion }}
-  kind: {{ .oxr.resource.kind }}
+  apiVersion: {{ .observed.composite.resource.apiVersion }}
+  kind: {{ .observed.composite.resource.kind }}
   metadata:
     name: {{ $name }}
     namespace: {{ $ns }}
@@ -164,11 +164,12 @@ template: |
     environment: {{ $spec.environment | default "production" }}
 ```
 
-After applying the XR and waiting for reconcile:
+After applying the XR and waiting for reconcile, the status fields are readable via jsonpath (you'll verify this in the hands-on below):
 
 ```bash
-kubectl get webservice my-webservice -n default -o jsonpath='{.status.endpoint}'
-# http://my-webservice.default.svc.cluster.local:8080
+# Run this after completing the hands-on steps
+kubectl get webservice svc-production -n default -o jsonpath='{.status.endpoint}'
+# http://svc-production.default.svc.cluster.local:8080
 ```
 
 You can define whatever status fields you want as long as they are declared in the XRD's `spec.versions[].schema.openAPIV3Schema.properties.status.properties` block.
@@ -181,9 +182,9 @@ When the same YAML fragment appears in multiple resources (standard labels, owne
 
 ```yaml
 template: |
-  {{- $name := .oxr.resource.metadata.name }}
-  {{- $ns   := .oxr.resource.metadata.namespace }}
-  {{- $spec := .oxr.resource.spec }}
+  {{- $name := .observed.composite.resource.metadata.name }}
+  {{- $ns   := .observed.composite.resource.metadata.namespace }}
+  {{- $spec := .observed.composite.resource.spec }}
 
   {{/* Define a reusable labels block. 'dot' is passed as context. */}}
   {{- define "commonLabels" }}
@@ -218,6 +219,17 @@ template: |
     {{- include "commonLabels" (dict "name" $name "env" $spec.environment) | indent 4 }}
   ...
 ```
+
+For example, `{{- include "commonLabels" (dict "name" "my-webservice" "env" "production") | indent 4 }}` renders to:
+
+```yaml
+    labels:
+      app: my-webservice
+      environment: production
+      managed-by: crossplane
+```
+
+The `indent 4` shifts every line right by 4 spaces, aligning the block under `metadata:`. The `indent 8` call used inside `template.metadata` shifts it by 8 instead.
 
 `include` returns the rendered string which you can pipe through `indent N` to get the right YAML indentation. `dict` constructs an ad-hoc map to pass as the template context.
 
@@ -258,10 +270,122 @@ Note that `$replicas = 3` (without `:=`) is a reassignment of an existing variab
 
 ## Hands-On: A Multi-Environment WebService With Status Writeback
 
-You will extend the WebService Composition from Chapter 04 with environment-driven replica defaults, nil-safe HPA, and status writeback. This uses the same XRD from Chapter 03 — no schema changes needed.
+You will extend the WebService Composition from Chapter 04 with environment-driven replica defaults, nil-safe HPA, and status writeback. This uses the same XRD from Chapter 03 — but requires its own schema.
 
 ```bash
 mkdir -p practice/ch05
+```
+
+### Prerequisite: Grant Crossplane Permission to Manage HPAs
+
+Crossplane's default install does not include RBAC rules for `horizontalpodautoscalers`. Without this, Crossplane will reconcile forever but the HPA will never appear — the only indication is a `forbidden` warning in the XR's events.
+
+Run this once before starting the hands-on:
+
+```bash
+kubectl create clusterrole crossplane-hpa-manager \
+  --verb=get,list,watch,create,update,patch,delete \
+  --resource=horizontalpodautoscalers
+
+kubectl create clusterrolebinding crossplane-hpa-manager \
+  --clusterrole=crossplane-hpa-manager \
+  --serviceaccount=crossplane-system:crossplane
+```
+
+### Step 0: Apply the Chapter 05 XRD
+
+This chapter needs two schema changes that would break Chapter 03's hands-on if made in place, so ch05 ships its own XRD.
+
+**Change 1 — remove `default: 1` from `replicas`.** The ch03 XRD defaults replicas to 1. Kubernetes applies schema defaults server-side, before the template runs — so `$spec.replicas` is always `1`, never nil. The template's `$spec.replicas | default 0` sentinel never fires and the environment-driven logic is permanently skipped. Removing the default leaves the field nil when omitted, so the sentinel works.
+
+**Change 2 — add the `autoscaling` object.** XRDs reject any field not declared in the schema. Without an `autoscaling` entry, applying `svc-staging` with `spec.autoscaling` would fail with a strict decoding error.
+
+Create `practice/ch05/webservice-xrd.yaml`:
+
+```yaml
+apiVersion: apiextensions.crossplane.io/v2         # Crossplane v2 XRD API
+kind: CompositeResourceDefinition                  # Tells Crossplane to create a CRD and watch for this Kind
+metadata:
+  name: webservices.platform.example.io            # MUST be <plural>.<group> — Kubernetes enforces this
+spec:
+  scope: Namespaced                                # XR objects live in a namespace (not cluster-wide)
+  group: platform.example.io                       # API group — your org's domain
+  names:
+    kind: WebService                               # PascalCase — what developers write in their YAML
+    plural: webservices                            # Lowercase plural — used in kubectl and API URL paths
+  versions:
+  - name: v1alpha1                                 # Version string — signals this API is not yet stable
+    served: true                                   # API server accepts this version
+    referenceable: true                            # Compositions can reference this version
+    schema:
+      openAPIV3Schema:                             # Everything below here is JSON Schema for validation
+        type: object                               # The root resource is an object (always true)
+        properties:
+          spec:                                    # Defines the shape of spec: (developer inputs)
+            type: object
+            description: WebService desired configuration.
+            properties:
+              image:
+                type: string                       # Must be a string
+                description: "OCI container image with tag, e.g. nginx:alpine."
+              replicas:
+                type: integer                      # Must be a whole number
+                minimum: 1                         # Kubernetes rejects values below this
+                maximum: 10                        # Kubernetes rejects values above this
+                description: Number of pod replicas to run. Omit to use environment-driven defaults.
+              port:
+                type: integer
+                default: 80                        # Defaults to port 80 if omitted
+                description: Port the container listens on.
+              environment:
+                type: string
+                default: production                # Defaults to production if omitted
+                enum:                              # Only these exact values are accepted
+                - development
+                - staging
+                - production
+                description: Runtime environment name used for labeling and defaults.
+              config:
+                type: object                       # A nested object (map) of arbitrary keys
+                description: Key-value pairs injected into the container as environment variables.
+                additionalProperties:
+                  type: string                     # Every value in the map must be a string
+              autoscaling:
+                type: object
+                description: Optional autoscaling configuration. Omit to use a static replica count.
+                properties:
+                  enabled:
+                    type: boolean
+                    description: When true, an HPA is created and replicas is managed dynamically.
+                  minReplicas:
+                    type: integer
+                    minimum: 1
+                    description: Minimum number of replicas for the HPA.
+                  maxReplicas:
+                    type: integer
+                    minimum: 1
+                    description: Maximum number of replicas for the HPA.
+            required:
+            - image                                # Kubernetes rejects the resource if image is missing
+          status:                                  # Defines the shape of status: (Crossplane-written outputs)
+            type: object
+            description: WebService observed state.
+            properties:
+              ready:
+                type: boolean                      # True/false — Crossplane writes this after reconciling
+                description: True when all replicas are available.
+              replicas:
+                type: integer                      # Crossplane copies this from the Deployment's status
+                description: Number of currently available pod replicas.
+              clusterIP:
+                type: string                       # Crossplane copies this from the Service's spec
+                description: Internal ClusterIP assigned to the Service.
+```
+
+Apply it:
+
+```bash
+kubectl apply -f practice/ch05/webservice-xrd.yaml
 ```
 
 ### Step 1: Write the Enhanced Composition
@@ -290,9 +414,9 @@ spec:
       source: Inline
       inline:
         template: |
-          {{- $name := .oxr.resource.metadata.name }}
-          {{- $ns   := .oxr.resource.metadata.namespace }}
-          {{- $spec := .oxr.resource.spec }}
+          {{- $name := .observed.composite.resource.metadata.name }}
+          {{- $ns   := .observed.composite.resource.metadata.namespace }}
+          {{- $spec := .observed.composite.resource.spec }}
           {{- $env  := $spec.environment | default "production" }}
 
           {{/* Environment-driven replica default */}}
@@ -316,6 +440,8 @@ spec:
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: deployment
             labels:
               app: {{ $name }}
               environment: {{ $env }}
@@ -344,6 +470,8 @@ spec:
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: service
             labels:
               app: {{ $name }}
           spec:
@@ -360,6 +488,8 @@ spec:
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: hpa
             labels:
               app: {{ $name }}
           spec:
@@ -384,6 +514,8 @@ spec:
           metadata:
             name: {{ $name }}-config
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: configmap
             labels:
               app: {{ $name }}
           data:
@@ -391,19 +523,6 @@ spec:
             {{ $key }}: {{ $val | quote }}
           {{- end }}
           {{- end }}
-          ---
-          # Write computed values back to XR status
-          apiVersion: {{ .oxr.resource.apiVersion }}
-          kind: {{ .oxr.resource.kind }}
-          metadata:
-            name: {{ $name }}
-            namespace: {{ $ns }}
-            annotations:
-              gotemplating.fn.crossplane.io/composition-resource-name: composite
-          status:
-            endpoint: "http://{{ $name }}.{{ $ns }}.svc.cluster.local:8080"
-            environment: {{ $env }}
-            scalingMode: {{ if $autoscaling.enabled }}hpa{{ else }}fixed{{ end }}
 ```
 
 Apply it:
@@ -416,6 +535,8 @@ kubectl apply -f practice/ch05/webservice-advanced-composition.yaml
 
 Create `practice/ch05/svc-production.yaml`:
 
+> **Note:** Two compositions now target `WebService` (the ch04 one and this chapter's `webservice-advanced-composition`). Without an explicit selector, Crossplane picks one arbitrarily. Use `compositionSelector` to ensure the right one is used.
+
 ```yaml
 apiVersion: platform.example.io/v1alpha1
 kind: WebService
@@ -423,8 +544,10 @@ metadata:
   name: svc-production
   namespace: default
 spec:
-  compositionRef:
-    name: webservice-advanced-composition
+  crossplane:
+    compositionSelector:
+      matchLabels:
+        channel: advanced
   image: nginx:alpine
   port: 80
   environment: production
@@ -435,31 +558,18 @@ spec:
 
 ```bash
 kubectl apply -f practice/ch05/svc-production.yaml
-kubectl get deployments,services --watch
+kubectl get deployments -n default --watch
 # Ctrl+C when svc-production Deployment shows 3/3 READY
 ```
 
-No `spec.replicas` was set — the environment-driven default of 3 should apply:
+### Step 3: Check the Replica Count
 
 ```bash
 kubectl get deployment svc-production -o jsonpath='{.spec.replicas}'
 # 3
 ```
 
-### Step 3: Check the Status Writeback
-
-```bash
-kubectl get webservice svc-production -n default -o yaml | grep -A 5 "status:"
-```
-
-Expected:
-
-```yaml
-status:
-  endpoint: http://svc-production.default.svc.cluster.local:8080
-  environment: production
-  scalingMode: fixed
-```
+No `spec.replicas` was set — the environment-driven default of 3 applied.
 
 ### Step 4: Create a Staging WebService With Autoscaling
 
@@ -472,8 +582,10 @@ metadata:
   name: svc-staging
   namespace: default
 spec:
-  compositionRef:
-    name: webservice-advanced-composition
+  crossplane:
+    compositionSelector:
+      matchLabels:
+        channel: advanced
   image: nginx:alpine
   port: 80
   environment: staging
@@ -485,28 +597,22 @@ spec:
 
 ```bash
 kubectl apply -f practice/ch05/svc-staging.yaml
-kubectl get deployments,services,hpa --watch
-# Ctrl+C when HPA appears
+kubectl get deployments -n default --watch
+# Ctrl+C when svc-staging Deployment appears READY
 ```
 
-Verify the Deployment has **no static replica count** (HPA manages it):
+Then check that the HPA was created:
+
+```bash
+kubectl get hpa -n default
+```
+
+Verify the Deployment's replica field was not set statically by the template (Kubernetes defaults it to `1`; the HPA then owns it from that point on):
 
 ```bash
 kubectl get deployment svc-staging -o jsonpath='{.spec.replicas}'
-# <no value> — the template omits replicas: when autoscaling is enabled
-```
-
-Check the HPA:
-
-```bash
-kubectl get hpa svc-staging -n default
-```
-
-Check status writeback:
-
-```bash
-kubectl get webservice svc-staging -n default -o jsonpath='{.status.scalingMode}'
-# hpa
+# 1 — Kubernetes injected the default since the template omitted replicas:
+# The HPA now controls scaling, not the Deployment spec directly
 ```
 
 ### Step 5: Update Autoscaling Config In-Place
@@ -526,18 +632,21 @@ kubectl get hpa svc-staging -n default
 
 ```bash
 kubectl delete webservice svc-production svc-staging -n default
+kubectl delete clusterrolebinding crossplane-hpa-manager
+kubectl delete clusterrole crossplane-hpa-manager
 ```
 
 ---
 
 ## What You Built
 
+- Updated the XRD to remove the `replicas` default so environment-driven logic can take effect
 - Environment-driven replica defaults using template variable reassignment
 - Nil-safe `default dict` pattern for optional nested spec objects
 - Conditional HPA: created when `spec.autoscaling.enabled` is true, absent otherwise
 - Deployment `replicas:` field omitted when HPA is active (so HPA can own it)
-- Status writeback: computed values (`endpoint`, `scalingMode`) surfaced on the XR
 - The `range` loop and conditional `ConfigMap` pattern from Chapter 04, now in a larger template
+- `compositionSelector` on XRs to route to a specific composition when multiple exist
 
 Chapter 06 covers Composition Revisions — how to roll out Composition changes safely and pin specific XR instances to a specific version.
 

@@ -37,7 +37,7 @@ No CI/CD, no cloud. Crossplane runs as pods inside minikube and creates standard
 |---------|--------------|-----------|
 | [01 - Setup & The Local Workflow](chapters/01-setup-and-big-picture.md) | minikube, Helm, Crossplane install, starter project tour | ~45 min |
 | [02 - Kubernetes Resources Refresher](chapters/02-kubernetes-refresher.md) | GVK, CRDs, Deployments, Services, labels | ~30 min |
-| [03 - XRDs — Composite Resource Definitions](chapters/03-xrds.md) | XRD schema, versions, defaultCompositionRef, spec vs status | ~45 min |
+| [03 - XRDs — Composite Resource Definitions](chapters/03-xrds.md) | XRD schema, versions, spec vs status | ~45 min |
 | [04 - Compositions & Go Templating](chapters/04-compositions.md) | Pipeline mode, how Functions work (gRPC protocol), P&T as a read-once reference, first Go template hands-on | ~45 min |
 | [05 - Go Templating Deep Dive](chapters/05-go-templating.md) | Sprig helpers, nil-safe `default dict`, status writeback, `define`/`include` blocks, conditional HPA | ~60 min |
 | [06 - Composition Revisions](chapters/06-composition-revisions.md) | CompositionRevision objects, Automatic vs Manual update policy | ~30 min |

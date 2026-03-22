@@ -421,8 +421,6 @@ metadata:
   name: payments
   namespace: default
 spec:
-  compositionRef:
-    name: appconfig-composition
   appName: payments-service
   environment: production
   owner: team-alpha

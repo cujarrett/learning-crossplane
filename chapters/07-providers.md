@@ -319,9 +319,9 @@ spec:
       source: Inline
       inline:
         template: |
-          {{- $name     := .oxr.resource.metadata.name }}
-          {{- $ns       := .oxr.resource.metadata.namespace }}
-          {{- $spec     := .oxr.resource.spec }}
+          {{- $name     := .observed.composite.resource.metadata.name }}
+          {{- $ns       := .observed.composite.resource.metadata.namespace }}
+          {{- $spec     := .observed.composite.resource.spec }}
           {{- $severity := $spec.severity | default "medium" }}
           {{- $severityEmoji := "" }}
           {{- if eq $severity "critical" }}{{- $severityEmoji = "🔴" }}

@@ -27,8 +27,7 @@ spec:
                 type: integer                      # Must be a whole number
                 minimum: 1                         # Kubernetes rejects values below this
                 maximum: 10                        # Kubernetes rejects values above this
-                default: 1                         # Kubernetes injects this if replicas is omitted
-                description: Number of pod replicas. Defaults to 1 if omitted.
+                description: Number of pod replicas to run. Omit to use environment-driven defaults.
               port:
                 type: integer
                 default: 80                        # Defaults to port 80 if omitted
@@ -46,6 +45,21 @@ spec:
                 description: Key-value pairs injected into the container as environment variables.
                 additionalProperties:
                   type: string                     # Every value in the map must be a string
+              autoscaling:
+                type: object
+                description: Optional autoscaling configuration. Omit to use a static replica count.
+                properties:
+                  enabled:
+                    type: boolean
+                    description: When true, an HPA is created and replicas is managed dynamically.
+                  minReplicas:
+                    type: integer
+                    minimum: 1
+                    description: Minimum number of replicas for the HPA.
+                  maxReplicas:
+                    type: integer
+                    minimum: 1
+                    description: Maximum number of replicas for the HPA.
             required:
             - image                                # Kubernetes rejects the resource if image is missing
           status:                                  # Defines the shape of status: (Crossplane-written outputs)
