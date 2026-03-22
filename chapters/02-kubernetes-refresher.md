@@ -12,11 +12,11 @@ This chapter covers the Kubernetes building blocks you will see throughout this 
 
 Every resource in Kubernetes is uniquely identified by three coordinates:
 
-| Coordinate | Example | What it means |
-|-----------|---------|---------------|
-| **Group** | `apps` | The API group that owns this resource type |
-| **Version** | `v1` | A semver-style schema version |
-| **Kind** | `Deployment` | The resource type name (PascalCase) |
+| Concept | YAML key | Example | Value casing |
+|---------|----------|---------|--------------|
+| Group | part of `apiVersion` | `apps` | lowercase |
+| Version | part of `apiVersion` | `v1` | lowercase |
+| Kind | `kind` | `Deployment` | PascalCase |
 
 In YAML this appears at the top of every manifest:
 
@@ -79,20 +79,20 @@ metadata:
   name: my-app
   namespace: default
 spec:
-  replicas: 2                            # Number of pods to run
+  replicas: 2                   # Number of pods to run
   selector:
     matchLabels:
-      app: my-app                        # Must match the template's labels
+      app: my-app               # Must match the template's labels
   template:
     metadata:
       labels:
-        app: my-app                      # Pods get this label
+        app: my-app             # Pods get this label
     spec:
       containers:
       - name: app
-        image: nginx:alpine              # Container image
+        image: nginx:alpine     # Container image
         ports:
-        - containerPort: 80              # Port the container listens on
+        - containerPort: 80     # Port the container listens on
         resources:
           requests:
             memory: "64Mi"
@@ -114,12 +114,12 @@ metadata:
   namespace: default
 spec:
   selector:
-    app: my-app                          # Routes traffic to pods with this label
+    app: my-app        # Routes traffic to pods with this label
   ports:
-  - port: 8080                           # Port clients connect to
-    targetPort: 80                       # Port on the pod container
+  - port: 8080         # Port clients connect to
+    targetPort: 80     # Port on the pod container
     protocol: TCP
-  type: ClusterIP                        # Internal-only (default). Not exposed outside cluster.
+  type: ClusterIP      # Internal-only (default). Not exposed outside cluster.
 ```
 
 ### ConfigMap
@@ -171,7 +171,7 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70       # Scale up when avg CPU > 70%
+        averageUtilization: 70     # Scale up when avg CPU > 70%
 ```
 
 ---
@@ -185,11 +185,11 @@ This is the most important pattern to understand before automating with Crosspla
 ```
 Pod:
   labels:
-    app: my-app        ← Pod has this label
+    app: my-app     ← Pod has this label
 
 Service:
   selector:
-    app: my-app        ← Service selects pods where app=my-app
+    app: my-app     ← Service selects pods where app=my-app
 ```
 
 Traffic sent to the Service's ClusterIP is forwarded to any Pod that matches the selector labels.
@@ -198,10 +198,10 @@ Traffic sent to the Service's ClusterIP is forwarded to any Pod that matches the
 
 ```
 Deployment.spec.selector.matchLabels:
-  app: my-app          ← Deployment claims pods with this label
+  app: my-app     ← Deployment claims pods with this label
 
 Deployment.spec.template.metadata.labels:
-  app: my-app          ← Pods it creates will have this label
+  app: my-app     ← Pods it creates will have this label
 ```
 
 The selector in `spec.selector.matchLabels` must match the labels in `spec.template.metadata.labels`. If they don't match, the Deployment controller rejects it.

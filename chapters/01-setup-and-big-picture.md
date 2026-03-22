@@ -15,38 +15,30 @@ Think of it as: **your own Kubernetes API server extension, without writing Go c
 Crossplane has three core building blocks:
 
 ```
-Developer writes YAML:
-
-  apiVersion: platform.example.io/v1alpha1
-  kind: WebService
-  metadata:
-    name: my-api
-  spec:
-    image: company/my-api:1.2.3
-    replicas: 2
-
-          │
-          │   Crossplane looks up:
-          ▼
-
-  ┌──────────────────────────────────────────────┐
-  │  XRD (CompositeResourceDefinition)           │
-  │  Defines the schema — what fields are valid  │
-  │  Creates the CRD so kubectl accepts it       │
-  └──────────────────────┬───────────────────────┘
-                         │
-                         ▼
-  ┌──────────────────────────────────────────────┐
-  │  Composition                                 │
-  │  Defines what to CREATE when a WebService    │
-  │  is applied — uses a Function pipeline       │
-  └──────────────────────┬───────────────────────┘
-                         │ pipeline runs
-                         ▼
-  ┌──────────────────────────────────────────────┐
-  │  Kubernetes Resources                        │
-  │  Deployment, Service, ConfigMap, etc.        │
-  └──────────────────────────────────────────────┘
+                             ┌──────────────────────────────────────────────────────────────┐
+                             │  PLATFORM TEAM (deployed once, sits in the cluster)          │
+                             │                                                              │
+                             │  ┌──────────────────────────┐  ┌──────────────────────────┐  │
+                             │  │  XRD                     │  │  Composition             │  │
+                             │  │  Defines the schema      │  │  Defines what to CREATE  │  │
+                             │  │  Registers type as CRD   │  │  Runs Function pipeline  │  │
+                             │  └──────────────────────────┘  └──────────────────────────┘  │
+                             └──────────────┬──────────────────────────────┬────────────────┘
+                                            │ validates                    │ drives
+                                            │                              │
+  DEVELOPER                                 ▼                              ▼
+                                     ┌──────┴──────────────────────────────┴──────┐
+  # Claim — namespaced YAML          │  XR (Composite Resource)                   │
+  # that the developer writes        │  Cluster-scoped live object                │
+  # and commits to Git.    ────────► │  Holds inputs & outputs                    │
+  apiVersion: example.io/v1alpha1    └──────────────────────┬─────────────────────┘
+  kind: WebService                                          │
+  metadata:                                                 │ Crossplane reconciles
+    name: my-api                                            ▼
+    namespace: team-a                ┌────────────────────────────────────────┐
+  spec:                              │  Kubernetes Resources                  │
+    image: ...                       │  Deployment, Service, ConfigMap, etc.  │
+    replicas: 2                      └────────────────────────────────────────┘
 ```
 
 **Platform team** owns the XRD and Composition — they define what `WebService` means.
@@ -125,7 +117,7 @@ brew install kubectl
 brew install helm
 
 # Optional: the Crossplane CLI (adds `crossplane` subcommands)
-brew install crossplane/tap/crossplane
+brew install crossplane
 ```
 
 Verify Docker Desktop is running. Minikube uses Docker as the VM driver on macOS by default.
@@ -143,7 +135,7 @@ minikube start \
 This creates a cluster named `crossplane` (separate from any other minikube clusters you have). When it is ready:
 
 ```bash
-kubectl cluster-info --context minikube-crossplane
+kubectl cluster-info --context crossplane
 ```
 
 You should see the control plane URL printed. Minikube automatically sets your `kubectl` context to the new cluster.
@@ -152,7 +144,7 @@ Check the context is active:
 
 ```bash
 kubectl config current-context
-# Should print: minikube-crossplane
+# Should print: crossplane
 ```
 
 ### Step 3: Install Crossplane via Helm
@@ -274,15 +266,6 @@ kubectl get deployments --watch
 
 Crossplane owns the composed resources. When the owner (the XR) is deleted, everything it composed is cleaned up automatically.
 
-### Step 9: Re-apply for the Next Chapter
-
-Re-apply so you have a running stack to explore:
-
-```bash
-kubectl apply -f app.yaml
-kubectl get deployments
-```
-
 ---
 
 ## Troubleshooting
@@ -301,7 +284,7 @@ kubectl describe app my-app -n default
 
 **Minikube context is wrong**
 ```bash
-kubectl config use-context minikube-crossplane
+kubectl config use-context crossplane
 ```
 
 ---

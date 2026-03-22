@@ -1,5 +1,7 @@
 # Learning Crossplane
 
+> **This guide targets Crossplane v2.** If you have used Crossplane before, note that v2 removes the Claim/XR split that existed in v1 — there is no longer a separate cluster-scoped XR object created behind the scenes. A namespaced XR (what you apply to the cluster) is the only object. You do not need to think about Claims as a distinct concept.
+
 A hands-on learning path for building Crossplane custom APIs from scratch — using **minikube on macOS**, **no cloud provider required**, and **Go templating** to generate Kubernetes resources.
 
 All work is local: write YAML and Go templates, apply them to minikube, test, iterate.
@@ -64,7 +66,7 @@ The YAML files in the root of this repo are a minimal working example you deploy
 | `xrd.yaml` | Defines the `App` custom resource API with a `spec.image` field |
 | `composition.yaml` | When an `App` is created, create a Deployment + Service |
 | `function.yaml` | Installs the `function-patch-and-transform` Crossplane plugin |
-| `app.yaml` | An instance of `App` — creates an nginx Deployment + Service |
+| `app.yaml` | An instance of `App` — this is the CR a developer writes and commits to Git. Argo (or any GitOps tool) applies it; Crossplane reconciles it into a Deployment + Service |
 
 ---
 
