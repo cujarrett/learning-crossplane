@@ -120,7 +120,15 @@ The `status` fields in the XRD schema get populated by `ToCompositeFieldPath` pa
 
 ## OpenAPI v3 Schema Reference
 
-The `openAPIV3Schema` section is JSON Schema with Kubernetes extensions. Here is the type system:
+The `openAPIV3Schema` section is JSON Schema with Kubernetes extensions. It defines what fields are allowed (and required) on your custom resource.
+
+The snippets below are **abbreviated** — they show only the `properties` block. In a real XRD they live here:
+
+```
+spec.versions[*].schema.openAPIV3Schema.properties.spec.properties
+```
+
+That is, each field you define under `spec:` in your XRD schema maps to one entry in that `properties` block.
 
 ### Basic Types
 
@@ -241,68 +249,68 @@ mkdir -p practice/ch03
 Create `practice/ch03/webservice-xrd.yaml`:
 
 ```yaml
-apiVersion: apiextensions.crossplane.io/v2
-kind: CompositeResourceDefinition
+apiVersion: apiextensions.crossplane.io/v2         # Crossplane v2 XRD API
+kind: CompositeResourceDefinition                  # Tells Crossplane to create a CRD and watch for this Kind
 metadata:
-  name: webservices.platform.example.io
+  name: webservices.platform.example.io            # MUST be <plural>.<group> — Kubernetes enforces this
 spec:
-  scope: Namespaced
-  group: platform.example.io
+  scope: Namespaced                                # XR objects live in a namespace (not cluster-wide)
+  group: platform.example.io                       # API group — your org's domain
   names:
-    kind: WebService
-    plural: webservices
+    kind: WebService                               # PascalCase — what developers write in their YAML
+    plural: webservices                            # Lowercase plural — used in kubectl and API URL paths
   versions:
-  - name: v1alpha1
-    served: true
-    referenceable: true
+  - name: v1alpha1                                 # Version string — signals this API is not yet stable
+    served: true                                   # API server accepts this version
+    referenceable: true                            # Compositions can reference this version
     schema:
-      openAPIV3Schema:
-        type: object
+      openAPIV3Schema:                             # Everything below here is JSON Schema for validation
+        type: object                               # The root resource is an object (always true)
         properties:
-          spec:
+          spec:                                    # Defines the shape of spec: (developer inputs)
             type: object
             description: WebService desired configuration.
             properties:
               image:
-                type: string
+                type: string                       # Must be a string
                 description: "OCI container image with tag, e.g. nginx:alpine."
               replicas:
-                type: integer
-                default: 1
-                minimum: 1
-                maximum: 10
+                type: integer                      # Must be a whole number
+                default: 1                         # Used if the developer omits this field
+                minimum: 1                         # Kubernetes rejects values below this
+                maximum: 10                        # Kubernetes rejects values above this
                 description: Number of pod replicas to run.
               port:
                 type: integer
-                default: 80
+                default: 80                        # Defaults to port 80 if omitted
                 description: Port the container listens on.
               environment:
                 type: string
-                default: production
-                enum:
+                default: production                # Defaults to production if omitted
+                enum:                              # Only these exact values are accepted
                 - development
                 - staging
                 - production
                 description: Runtime environment name used for labeling and defaults.
               config:
-                type: object
+                type: object                       # A nested object (map) of arbitrary keys
                 description: Key-value pairs injected into the container as environment variables.
                 additionalProperties:
-                  type: string
+                  type: string                     # Every value in the map must be a string
             required:
-            - image
-          status:
+            - image                                # Kubernetes rejects the resource if image is missing
+          status:                                  # Defines the shape of status: (Crossplane-written outputs)
             type: object
             description: WebService observed state.
             properties:
               ready:
-                type: boolean
+                type: boolean                      # True/false — Crossplane writes this after reconciling
                 description: True when all replicas are available.
               replicas:
-                type: integer
+                type: integer                      # Crossplane copies this from the Deployment's status
                 description: Number of currently available pod replicas.
               clusterIP:
-                type: string
+                type: string                       # Crossplane copies this from the Service's spec
                 description: Internal ClusterIP assigned to the Service.
 ```
 

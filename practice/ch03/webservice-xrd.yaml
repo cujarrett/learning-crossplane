@@ -1,0 +1,63 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: webservices.platform.example.io
+spec:
+  scope: Namespaced
+  group: platform.example.io
+  names:
+    kind: WebService
+    plural: webservices
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            description: WebService desired configuration.
+            properties:
+              image:
+                type: string
+                description: "OCI container image with tag, e.g. nginx:alpine."
+              replicas:
+                type: integer
+                default: 1
+                minimum: 1
+                maximum: 10
+                description: Number of pod replicas to run.
+              port:
+                type: integer
+                default: 80
+                description: Port the container listens on.
+              environment:
+                type: string
+                default: production
+                enum:
+                - development
+                - staging
+                - production
+                description: Runtime environment name used for labeling and defaults.
+              config:
+                type: object
+                description: Key-value pairs injected into the container as environment variables.
+                additionalProperties:
+                  type: string
+            required:
+            - image
+          status:
+            type: object
+            description: WebService observed state.
+            properties:
+              ready:
+                type: boolean
+                description: True when all replicas are available.
+              replicas:
+                type: integer
+                description: Number of currently available pod replicas.
+              clusterIP:
+                type: string
+                description: Internal ClusterIP assigned to the Service.
