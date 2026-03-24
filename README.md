@@ -4,27 +4,6 @@ A hands-on learning path for building Crossplane custom APIs from scratch — us
 
 All work is local: write YAML and Go templates, apply them to minikube, test, iterate.
 
----
-
-## The Local Development Loop
-
-Every chapter follows the same rhythm:
-
-```
-  Write (XRD, Composition, or Go template)
-          │
-          ▼
-  kubectl apply -f <file.yaml>
-          │
-          ▼
-  Crossplane reconciles
-          │
-          ▼
-  kubectl get / describe / logs
-          │
-          └─ tweak and repeat
-```
-
 No CI/CD, no cloud. Crossplane runs as pods inside minikube and creates standard Kubernetes resources (Deployments, Services, ConfigMaps). By Chapter 09 you will write your own Composition Function in Go — a real gRPC service that Crossplane calls to render resources.
 
 ---
@@ -74,6 +53,25 @@ practice/
 ```
 
 Work through chapters in order — each one builds on the previous.
+
+## The Local Development Loop
+
+Every chapter follows the same rhythm:
+
+```
+  Write (XRD, Composition, or Go template)
+          │
+          ▼
+  kubectl apply -f <file.yaml>
+          │
+          ▼
+  Crossplane reconciles
+          │
+          ▼
+  kubectl get / describe / logs
+          │
+          └─ tweak and repeat
+```
 
 > **This guide targets Crossplane v2.** If you have used Crossplane before, note that v2 removes the Claim/XR split that existed in v1 — there is no longer a separate cluster-scoped XR object created behind the scenes. A namespaced XR (what you apply to the cluster) is the only object. You do not need to think about Claims as a distinct concept.
 
