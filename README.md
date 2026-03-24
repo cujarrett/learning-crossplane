@@ -23,6 +23,8 @@ No CI/CD, no cloud. Crossplane runs as pods inside minikube and creates standard
 | [09 - Advanced Go Templating](chapters/09-advanced-go-templating.md) | HPA conditionals, nil-safe patterns, loops, MicroService XRD | ~60 min |
 | [10 - Write a Composition Function in Go](chapters/10-write-function-in-go.md) | Custom Go function, RunFunction handler, local image load | ~90 min |
 
+> **This guide targets Crossplane v2.** If you have used Crossplane before, note that v2 removes the Claim/XR split that existed in v1 — there is no longer a separate cluster-scoped XR object created behind the scenes. A namespaced XR (what you apply to the cluster) is the only object. You do not need to think about Claims as a distinct concept.
+
 ---
 
 ## Prerequisites
@@ -72,8 +74,6 @@ Every chapter follows the same rhythm:
           │
           └─ tweak and repeat
 ```
-
-> **This guide targets Crossplane v2.** If you have used Crossplane before, note that v2 removes the Claim/XR split that existed in v1 — there is no longer a separate cluster-scoped XR object created behind the scenes. A namespaced XR (what you apply to the cluster) is the only object. You do not need to think about Claims as a distinct concept.
 
 ---
 
