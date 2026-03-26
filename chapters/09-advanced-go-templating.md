@@ -115,12 +115,24 @@ status:
 ## Hands-On: Build the MicroService Custom Resource
 
 ```bash
-mkdir -p practice/ch07
+mkdir -p practice/ch09
+```
+
+### Prerequisites
+
+This chapter needs `function-go-templating` (from Chapter 04) and the `team-alpha` namespace (from Chapter 08):
+
+```bash
+kubectl apply -f practice/ch04/function-go-templating.yaml
+kubectl get functions.pkg.crossplane.io --watch
+# Wait for HEALTHY=True, then Ctrl+C
+
+kubectl apply -f practice/ch08/namespaces.yaml
 ```
 
 ### Step 1: Write the MicroService XRD
 
-Create `practice/ch07/microservice-xrd.yaml`:
+Create `practice/ch09/microservice-xrd.yaml`:
 
 ```yaml
 apiVersion: apiextensions.crossplane.io/v2
@@ -207,14 +219,14 @@ spec:
 Apply it:
 
 ```bash
-kubectl apply -f practice/ch07/microservice-xrd.yaml
+kubectl apply -f practice/ch09/microservice-xrd.yaml
 kubectl get xrds --watch
 # Wait for microservices.platform.example.io ESTABLISHED=True, then Ctrl+C
 ```
 
 ### Step 2: Write the MicroService Go Template Composition
 
-Create `practice/ch07/microservice-composition.yaml`:
+Create `practice/ch09/microservice-composition.yaml`:
 
 ```yaml
 apiVersion: apiextensions.crossplane.io/v1
@@ -265,6 +277,8 @@ spec:
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: deployment
             labels:
               app: {{ $name }}
               environment: {{ $spec.environment | default "production" }}
@@ -307,6 +321,8 @@ spec:
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: service
             labels:
               app: {{ $name }}
               managed-by: crossplane
@@ -325,6 +341,8 @@ spec:
           metadata:
             name: {{ $name }}-config
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: config
             labels:
               app: {{ $name }}
               managed-by: crossplane
@@ -341,6 +359,8 @@ spec:
           metadata:
             name: {{ $name }}
             namespace: {{ $ns }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: hpa
             labels:
               app: {{ $name }}
               managed-by: crossplane
@@ -359,17 +379,41 @@ spec:
                   type: Utilization
                   averageUtilization: {{ $asCPU }}
           {{- end }}
+
+          {{- $depAvailable := 0 }}
+          {{- if .observed.resources.deployment }}
+            {{- $depAvailable = .observed.resources.deployment.resource.status.availableReplicas | default 0 }}
+          {{- end }}
+
+          ---
+          apiVersion: {{ .observed.composite.resource.apiVersion }}
+          kind: {{ .observed.composite.resource.kind }}
+          metadata:
+            name: {{ .observed.composite.resource.metadata.name }}
+            namespace: {{ .observed.composite.resource.metadata.namespace }}
+          status:
+            conditions:
+            - lastTransitionTime: "1970-01-01T00:00:00Z"
+              {{- if gt (int $depAvailable) 0 }}
+              reason: Available
+              status: "True"
+              {{- else }}
+              reason: Creating
+              status: "False"
+              message: "Waiting for Deployment to have available replicas"
+              {{- end }}
+              type: Ready
 ```
 
 Apply it:
 
 ```bash
-kubectl apply -f practice/ch07/microservice-composition.yaml
+kubectl apply -f practice/ch09/microservice-composition.yaml
 ```
 
 ### Step 3: Deploy a MicroService Without Autoscaling
 
-Create `practice/ch07/svc-development.yaml`:
+Create `practice/ch09/svc-development.yaml`:
 
 ```yaml
 apiVersion: platform.example.io/v1alpha1
@@ -390,9 +434,8 @@ spec:
 Apply it:
 
 ```bash
-kubectl apply -f practice/ch07/svc-development.yaml
-kubectl get deployments,services,configmaps -n team-alpha --watch
-# Ctrl+C when Deployment shows 1/1 READY
+kubectl apply -f practice/ch09/svc-development.yaml
+kubectl get deployments,services,configmaps -n team-alpha
 ```
 
 Check the replica count — `development` environment should have set `replicas: 1`:
@@ -410,9 +453,55 @@ kubectl get hpa -n team-alpha
 # Should print: No resources found in team-alpha namespace.
 ```
 
-### Step 4: Deploy a MicroService With Autoscaling
+### Step 4: Grant Crossplane Permission to Manage HPAs
 
-Create `practice/ch07/svc-production.yaml`:
+By default, Crossplane's service account can manage Deployments and Services but does not have permission to create `HorizontalPodAutoscaler` resources. Without this, any XR with `autoscaling.enabled=true` will fail with a forbidden error.
+
+Create `practice/ch09/crossplane-hpa-rbac.yaml`:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-hpa-manager
+rules:
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  - horizontalpodautoscalers/status
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane-hpa-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossplane-hpa-manager
+subjects:
+- kind: ServiceAccount
+  name: crossplane
+  namespace: crossplane-system
+```
+
+Apply it:
+
+```bash
+kubectl apply -f practice/ch09/crossplane-hpa-rbac.yaml
+```
+
+### Step 5: Deploy a MicroService With Autoscaling
+
+Create `practice/ch09/svc-production.yaml`:
 
 ```yaml
 apiVersion: platform.example.io/v1alpha1
@@ -437,9 +526,8 @@ spec:
 Apply it:
 
 ```bash
-kubectl apply -f practice/ch07/svc-production.yaml
-kubectl get deployments,services,configmaps,hpa -n team-alpha --watch
-# Ctrl+C when all show as ready
+kubectl apply -f practice/ch09/svc-production.yaml
+kubectl get deployments,services,configmaps,hpa -n team-alpha
 ```
 
 Verify the HPA was created:
@@ -455,7 +543,7 @@ kubectl get deployment orders-service -n team-alpha -o jsonpath='{.spec.replicas
 # May show 2 (the HPA's minReplicas default) or nil
 ```
 
-### Step 5: Update Autoscaling at Runtime
+### Step 6: Update Autoscaling at Runtime
 
 ```bash
 kubectl patch microservice orders-service -n team-alpha \
@@ -472,7 +560,7 @@ kubectl get hpa orders-service -n team-alpha --watch
 
 Crossplane reconciled the change from the MicroService XR to the HPA — you never touched the HPA directly.
 
-### Step 6: Disable Autoscaling — XR-Driven Rollback
+### Step 7: Disable Autoscaling — XR-Driven Rollback
 
 ```bash
 kubectl patch microservice orders-service -n team-alpha \
@@ -494,7 +582,7 @@ kubectl get deployment orders-service -n team-alpha -o jsonpath='{.spec.replicas
 # Should now show 3 (production environment default)
 ```
 
-### Step 7: Clean Up
+### Step 8: Clean Up
 
 ```bash
 kubectl delete microservice payments-service -n team-alpha
