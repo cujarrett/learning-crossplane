@@ -603,4 +603,4 @@ You now have the core skills to build a real internal developer platform API wit
 
 ---
 
-➡️ [Chapter 10: Write a Composition Function in Go](10-write-function-in-go.md)
+➡️ [Crossplane 10: Write a Composition Function in Go](10-write-function-in-go.md)

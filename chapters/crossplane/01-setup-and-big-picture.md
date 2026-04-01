@@ -300,4 +300,4 @@ kubectl config use-context crossplane
 
 ---
 
-➡️ [Chapter 02: Kubernetes Resources Refresher](02-kubernetes-refresher.md)
+➡️ [Crossplane 02: Kubernetes Resources Refresher](02-kubernetes-refresher.md)

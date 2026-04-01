@@ -429,4 +429,4 @@ kubectl delete -f practice/ch11/team-metadata-mock.yaml
 
 ---
 
-[Back to README](../README.md)
+➡️ [KRO](../kro/01-intro-and-setup.md)

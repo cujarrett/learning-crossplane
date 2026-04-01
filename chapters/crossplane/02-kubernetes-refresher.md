@@ -355,4 +355,4 @@ In the next chapter you will define your own `WebService` custom resource type w
 
 ---
 
-➡️ [Chapter 03: XRDs — Your Platform API](03-xrds.md)
+➡️ [Crossplane 03: XRDs — Your Platform API](03-xrds.md)

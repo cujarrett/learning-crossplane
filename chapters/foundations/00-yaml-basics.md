@@ -272,4 +272,4 @@ The `ToCompositeFieldPath` patches are how the XR becomes a single source of tru
 
 ---
 
-➡️ [Chapter 01: Setup & The Big Picture](01-setup-and-big-picture.md)
+➡️ [Chapter 01: CRD's and Controllers](01-crds-crs-controllers.md)

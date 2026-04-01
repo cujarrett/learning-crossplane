@@ -564,4 +564,4 @@ Composition Revisions are the safety net for platform changes at scale. The next
 
 ---
 
-➡️ [Chapter 07: Providers & Managed Resources](07-providers.md)
+➡️ [Crossplane 07: Providers & Managed Resources](07-providers.md)

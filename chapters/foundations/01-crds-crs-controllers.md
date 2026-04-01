@@ -307,3 +307,5 @@ Notice: the structure is identical to what Crossplane generates from your XRD. T
 - **Crossplane** is a controller framework: it ships controllers that turn XRDs into CRDs, and Compositions + Functions into reconciliation logic — without you writing Go for the common case.
 - When something "uses controllers," it means it ships CRDs + controller Pods. You interact with it by submitting CRs.
 - The KRM contract (`spec` = desired, `status` = observed, never commit status) applies universally across all three layers.
+
+➡️ [Crossplane 01: Setup and Big Picture](../crossplane/01-setup-and-big-picture.md)

@@ -447,4 +447,4 @@ The XRD is the API contract between your platform team and your developers. In C
 
 ---
 
-➡️ [Chapter 04: Compositions & Go Templating](04-compositions.md)
+➡️ [Crossplane  04: Compositions & Go Templating](04-compositions.md)

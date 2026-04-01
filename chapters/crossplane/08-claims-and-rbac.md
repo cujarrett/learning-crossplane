@@ -345,4 +345,4 @@ The next chapter dives deeper into Go templating: conditional HPA creation, envi
 
 ---
 
-➡️ [Chapter 09: Advanced Go Templating](09-advanced-go-templating.md)
+➡️ [Crossplane 09: Advanced Go Templating](09-advanced-go-templating.md)

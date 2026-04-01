@@ -659,4 +659,4 @@ Chapter 06 covers Composition Revisions — how to roll out Composition changes 
 
 ---
 
-➡️ [Chapter 06: Composition Revisions](06-composition-revisions.md)
+➡️ [Crossplane 06: Composition Revisions](06-composition-revisions.md)

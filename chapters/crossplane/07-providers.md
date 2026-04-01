@@ -494,4 +494,4 @@ kubectl delete secret github-credentials -n crossplane-system
 
 ---
 
-➡️ [Chapter 08: Namespace Isolation & RBAC](08-claims-and-rbac.md)
+➡️ [Crossplane 08: Namespace Isolation & RBAC](08-claims-and-rbac.md)

@@ -481,4 +481,4 @@ Chapter 05 goes deeper: Sprig helpers, nil-safe map patterns, writing status bac
 
 ---
 
-➡️ [Chapter 05: Go Templating Deep Dive](05-go-templating.md)
+➡️ [Crossplane 05: Go Templating Deep Dive](05-go-templating.md)

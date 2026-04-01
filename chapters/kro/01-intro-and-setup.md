@@ -335,3 +335,5 @@ At reconciliation time it creates resources in topological order, waiting for ea
 - kro is **non-Turing-complete by design** — CEL always terminates, has no side effects, and is validated at apply time.
 - Deleting a CR deletes all kro-managed downstream resources (owned via Kubernetes `ownerReferences`).
 - Use kro when CEL is expressive enough. Reach for Crossplane when you need Go functions, provider packages, or composition revisions.
+
+[Back to README](../README.md)
