@@ -29,7 +29,7 @@ Everything in Kubernetes — whether built-in or custom — works through the sa
 │  "I want one Database named my-postgres"                     │
 │                                                              │
 │  Stored in etcd just like a Deployment or Service.           │
-│  Has spec (desired state) + status (observed state).        │
+│  Has spec (desired state) + status (observed state).         │
 └──────────────────────────────┬───────────────────────────────┘
                                │ watched by
                                ▼
@@ -66,7 +66,7 @@ No layer is optional. A CRD with no controller means resources get stored but no
 Every controller — whether you write it yourself or use Crossplane — implements the same pattern:
 
 ```
-                  ┌────────────────────────────────────┐
+                  ┌─────────────────────────────────────┐
                   │         etcd (API server)           │
                   │                                     │
                   │  CR: Database/my-postgres           │
@@ -76,7 +76,7 @@ Every controller — whether you write it yourself or use Crossplane — impleme
                   └───────────────┬─────────────────────┘
                                   │  Watch / List
                                   ▼
-                  ┌────────────────────────────────────┐
+                  ┌─────────────────────────────────────┐
                   │         Controller (your Pod)       │
                   │                                     │
                   │  1. GET current CR from API server  │
@@ -88,11 +88,11 @@ Every controller — whether you write it yourself or use Crossplane — impleme
                   └───────────────┬─────────────────────┘
                                   │  Creates / updates
                                   ▼
-                  ┌────────────────────────────────────┐
+                  ┌─────────────────────────────────────┐
                   │  Actual resources                   │
                   │  (other k8s objects, cloud APIs,    │
                   │   external services, databases …)   │
-                  └────────────────────────────────────┘
+                  └─────────────────────────────────────┘
 ```
 
 Step 3 is the crux: the controller is always computing **desired state minus current state** and only acting on the difference. This is why Kubernetes-style systems are *eventually consistent* — the loop keeps running until the diff is zero.
@@ -107,7 +107,7 @@ Crossplane is a **controller framework**. It ships a set of controllers that wat
 ┌──────────────────────────────────────────────────────────────┐
 │  Standard Kubernetes approach                                │
 │                                                              │
-│  You write: CRD + Controller code (Go, operator-sdk, etc.)  │
+│  You write: CRD + Controller code (Go, operator-sdk, etc.)   │
 │  You deploy: CRD manifest + controller Pod                   │
 └──────────────────────────────────────────────────────────────┘
 
@@ -292,7 +292,7 @@ Now look at a built-in CRD from cert-manager (if installed) or the Crossplane pr
 
 ```bash
 # Compare schema structure — all CRDs follow the same OpenAPI v3 schema pattern
-kubectl get crd certificates.cert-manager.io -o yaml | head -80
+kubectl get crd apps.example.crossplane.io -o yaml | head -80
 ```
 
 Notice: the structure is identical to what Crossplane generates from your XRD. That is the point — **Crossplane XRDs are just a higher-level API for authoring CRDs without writing the CRD YAML yourself.**
